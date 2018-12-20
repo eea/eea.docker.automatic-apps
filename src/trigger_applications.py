@@ -23,7 +23,7 @@ import requests
 import os
 import sys
 import logging
-logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("Reportek Automatic Apps")
 
 ACTIVE_APPS_ENDPOINT = 'ReportekEngine/getWkAppsActive'
