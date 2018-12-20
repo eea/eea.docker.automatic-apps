@@ -21,7 +21,9 @@ __doc__ = """
 import argparse
 import requests
 import os
+import sys
 import logging
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logger = logging.getLogger("Reportek Automatic Apps")
 
 ACTIVE_APPS_ENDPOINT = 'ReportekEngine/getWkAppsActive'
