@@ -19,42 +19,61 @@ __doc__ = """
 """
 
 import argparse
-import requests
+import json
+import logging
 import os
 import sys
-import logging
+
+import requests
+
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("Reportek Automatic Apps")
 
-ACTIVE_APPS_ENDPOINT = 'ReportekEngine/getWkAppsActive'
-TRIGGER_ENDPOINT = 'triggerApplication'
+FWD_ENVS_ENDPOINT = 'ReportekEngine/get_forward_envelopes'
+FWD_ENDPOINT = 'forwardState'
 
 
-def trigger_apps(portal_url, user, password, timeout, wf_app):
-    apps_url = '/'.join([portal_url, ACTIVE_APPS_ENDPOINT])
-    auth = (user, password)
-    params = {'p_applications': wf_app}
-    resp = requests.get(apps_url, auth=auth, params=params, timeout=int(timeout))
+def trigger_apps(portal_url, user, password, timeout):
     total = 0
     success = 0
     failed = 0
+    fwd_envs_url = '/'.join([portal_url, FWD_ENVS_ENDPOINT])
+    auth = (user, password)
+    resp = requests.get(fwd_envs_url, auth=auth, timeout=int(timeout))
     if resp.ok:
-        wks = resp.json()
-        for wk in wks:
-            wk_id = wk.split('/')[-1]
-            trigger_url = '/'.join([wk, TRIGGER_ENDPOINT])
-            t_params = {'p_workitem_id': wk_id}
-            t_resp = requests.get(trigger_url, auth=auth, params=t_params, timeout=int(timeout))
-            if t_resp.ok and t_resp.text == '1':
-                logger.info("Successfully triggered {} for {}".format(wf_app, wk))
-                success += 1
-            else:
-                logger.warning("Unable to trigger {} for {}. Response code: {} - {}".format(wf_app, wk, t_resp.status_code, t_resp.content))
-                failed += 1
-            total += 1
+        envs = resp.json()
+        for env in envs:
+            trigger_url = '/'.join([env, FWD_ENDPOINT])
+            while True:
+                t_resp = requests.get(trigger_url,
+                                      auth=auth,
+                                      timeout=int(timeout))
+                if t_resp.ok:
+                    info = t_resp.json()
+                    forwarded = info.get('forwarded')
+                    triggered = info.get('triggered')
+                    triggerable = info.get('triggerable')
+                    if forwarded:
+                        logger.info("Successfully forwarded {} for {}".format(forwarded, env))
+                        success += 1
+                    if triggered:
+                        logger.info("Successfully triggered {} for {}".format(triggered, env))
+                        success += 1
+                    if not triggerable:
+                        logger.info("No more triggerable app for {}".format(env))
+                        break
+                else:
+                    logger.warning("Unable to trigger {}. Response code: {} - {}".format(env, t_resp.status_code, t_resp.content))
+                    failed += 1
+                    break
+
     else:
-        logger.error("Unable to retrieve active Apps workitems: {}".format(resp.status_code))
-    logger.info("Finished. Total: {}, Success: {}, Failed: {}".format(total, success, failed))
+        logger.error("Unable to retrieve running envelopes: {}".format(resp.status_code))
+    total = success + failed
+    logger.info("Finished. Total: {}, Success: {}, Failed: {}".format(total,
+                                                                      success,
+                                                                      failed))
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -77,12 +96,6 @@ if __name__ == '__main__':
         nargs='?',
         default=os.environ.get('PASSWORD'))
     parser.add_argument(
-        'wf_app',
-        metavar='wf_app',
-        help='Workflow app to be triggered',
-        nargs='?',
-        default=os.environ.get('WF_APP'))
-    parser.add_argument(
         'timeout',
         metavar='timeout',
         nargs='?',
@@ -94,8 +107,8 @@ if __name__ == '__main__':
     except:
         args = None
 
-    if not args or not args.portal_url or not args.wf_app or not args.user or not args.password:
+    if not args or not args.portal_url or not args.user or not args.password:
         print(__doc__)
         print("For help use --help")
     else:
-        trigger_apps(args.portal_url, args.user, args.password, args.timeout, args.wf_app)
+        trigger_apps(args.portal_url, args.user, args.password, args.timeout)
