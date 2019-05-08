@@ -13,6 +13,6 @@ RUN pip install -r /requirements.txt
 
 HEALTHCHECK --interval=5s --timeout=3s \
     CMD if [ $((`date +%s` - `stat -c %X $HB_PATH`)) -le $(($THRESHOLD_MULTIPLIER*$RUN_INTERVALS)) ]; \
-        then echo $((`date +%s` - `stat -c %X $HB_PATH`)) seconds since last heartbeat; else exit 1; fi
+        then echo $((`date +%s` - `stat -c %X $HB_PATH`)) seconds since last heartbeat; else pkill -f nc; exit 1; fi
 
 ENTRYPOINT  ["/entrypoint.sh"]
