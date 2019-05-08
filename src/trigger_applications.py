@@ -30,6 +30,19 @@ logger = logging.getLogger("Reportek Automatic Apps")
 
 FWD_ENVS_ENDPOINT = 'ReportekEngine/get_forward_envelopes'
 FWD_ENDPOINT = 'forwardState'
+HB_FILE = os.environ.get('HB_PATH', '/var/run/a_apps_heartbeat')
+
+
+def do_heartbeat():
+    """ Change utime for the hb file."""
+    import os
+    file_exists = os.path.isfile(HB_FILE)
+    if file_exists:
+        os.utime(HB_FILE, None)
+    else:
+        # Create the hb file if it doesn't exist
+        hb = open(HB_FILE, 'w')
+        hb.close()
 
 
 def trigger_apps(portal_url, user, password, timeout):
@@ -38,40 +51,45 @@ def trigger_apps(portal_url, user, password, timeout):
     failed = 0
     fwd_envs_url = '/'.join([portal_url, FWD_ENVS_ENDPOINT])
     auth = (user, password)
-    resp = requests.get(fwd_envs_url, auth=auth, timeout=int(timeout))
-    if resp.ok:
-        envs = resp.json()
-        for env in envs:
-            trigger_url = '/'.join([env, FWD_ENDPOINT])
-            while True:
-                t_resp = requests.get(trigger_url,
-                                      auth=auth,
-                                      timeout=int(timeout))
-                if t_resp.ok:
-                    info = t_resp.json()
-                    forwarded = info.get('forwarded')
-                    triggered = info.get('triggered')
-                    triggerable = info.get('triggerable')
-                    if forwarded:
-                        logger.info("Successfully forwarded {} for {}".format(forwarded, env))
-                        success += 1
-                    if triggered:
-                        logger.info("Successfully triggered {} for {}".format(triggered, env))
-                        success += 1
-                    if not triggerable:
-                        logger.info("No more triggerable app for {}".format(env))
+    try:
+        resp = requests.get(fwd_envs_url, auth=auth, timeout=int(timeout))
+        if resp.ok:
+            envs = resp.json()
+            for env in envs:
+                trigger_url = '/'.join([env, FWD_ENDPOINT])
+                while True:
+                    t_resp = requests.get(trigger_url,
+                                          auth=auth,
+                                          timeout=int(timeout))
+                    if t_resp.ok:
+                        info = t_resp.json()
+                        forwarded = info.get('forwarded')
+                        triggered = info.get('triggered')
+                        triggerable = info.get('triggerable')
+                        if forwarded:
+                            logger.info("Successfully forwarded {} for {}".format(forwarded, env))
+                            success += 1
+                        if triggered:
+                            logger.info("Successfully triggered {} for {}".format(triggered, env))
+                            success += 1
+                        if not triggerable:
+                            logger.info("No more triggerable app for {}".format(env))
+                            break
+                    else:
+                        logger.warning("Unable to trigger {}. Response code: {} - {}".format(env, t_resp.status_code, t_resp.content))
+                        failed += 1
                         break
-                else:
-                    logger.warning("Unable to trigger {}. Response code: {} - {}".format(env, t_resp.status_code, t_resp.content))
-                    failed += 1
-                    break
 
-    else:
-        logger.error("Unable to retrieve running envelopes: {}".format(resp.status_code))
-    total = success + failed
-    logger.info("Finished. Total: {}, Success: {}, Failed: {}".format(total,
-                                                                      success,
-                                                                      failed))
+        else:
+            logger.error("Unable to retrieve running envelopes: {}".format(resp.status_code))
+        total = success + failed
+        logger.info("Finished. Total: {}, Success: {}, Failed: {}".format(total,
+                                                                          success,
+                                                                          failed))
+    except Exception as e:
+        logger.error("Unable to retrieve the list of envelopes to be forwarded: {}".format(str(e)))
+
+    do_heartbeat()
 
 
 if __name__ == '__main__':
